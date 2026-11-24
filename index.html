@@ -76,6 +76,20 @@ tr.editing td { background: var(--tint-2) !important; box-shadow: inset 3px 0 0 
 .total-line { margin: 14px 0 0; padding: 8px 12px; background: var(--tint); border-radius: var(--radius); font-size: 13px; color: var(--muted); }
 .total-line b { color: var(--ink); font-variant-numeric: tabular-nums; }
 .data-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.login { min-height: 100vh; display: grid; place-items: center; padding: 24px 16px; }
+.login[hidden], .wrap[hidden] { display: none; }
+.login-card { width: 100%; max-width: 380px; display: flex; flex-direction: column; gap: 14px; }
+.login-card header { padding: 22px; }
+.login-card h1 { font-size: 24px; }
+.roles { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; background: var(--tint); border: 1px solid var(--line); border-radius: 999px; padding: 4px; }
+.roles .tab { text-align: center; }
+.login-card .primary { width: 100%; padding: 10px; }
+.topbar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: start; gap: 12px; }
+.who { display: flex; align-items: center; gap: 10px; font-size: 13px; color: rgba(255,255,255,.9); }
+.who .btn { background: rgba(255,255,255,.15); color: #fff; border-color: rgba(255,255,255,.4); }
+.who .btn:hover { background: rgba(255,255,255,.25); }
+.badge { background: rgba(255,255,255,.2); border-radius: 999px; padding: 2px 10px; font-weight: 600; }
+body.viewer .admin-only { display: none !important; }
 @media print {
   body { background: #fff; }
   .tabs, #form-card, .filters button, .data-tools, .actions-col { display: none !important; }
@@ -85,9 +99,30 @@ tr.editing td { background: var(--tint-2) !important; box-shadow: inset 3px 0 0 
 </style>
 </head>
 <body>
-<div class="wrap">
+<main class="login" id="login">
+  <form class="card login-card" id="login-form" autocomplete="off">
+    <header>
+      <h1>RFD Monitoring</h1>
+      <p class="lede">Sign in to continue</p>
+    </header>
+    <div class="roles" role="radiogroup" aria-label="Sign in as">
+      <button type="button" class="tab" role="radio" data-role="viewer" aria-checked="true" aria-selected="true">Viewer</button>
+      <button type="button" class="tab" role="radio" data-role="admin" aria-checked="false" aria-selected="false">Admin</button>
+    </div>
+    <label class="field" id="pw-field" hidden>Admin password
+      <input type="password" id="pw" autocomplete="current-password">
+    </label>
+    <p class="msg bad" id="login-bad" hidden>Wrong password.</p>
+    <button type="submit" class="btn primary" id="login-btn">Continue as viewer</button>
+  </form>
+</main>
+
+<div class="wrap" id="app" hidden>
   <header>
-    <h1>Revolving Fund (RFD) Monitoring</h1>
+    <div class="topbar">
+      <h1>Revolving Fund (RFD) Monitoring</h1>
+      <div class="who"><span class="badge" id="who-role"></span><button type="button" class="btn small" id="logout">Log out</button></div>
+    </div>
     <p class="lede" id="lede"></p>
   </header>
 
@@ -103,7 +138,7 @@ tr.editing td { background: var(--tint-2) !important; box-shadow: inset 3px 0 0 
 
   <nav class="tabs" role="tablist" aria-label="RFD views">
     <button type="button" class="tab" role="tab" data-tab="dashboard" aria-selected="true">Dashboard</button>
-    <button type="button" class="tab" role="tab" data-tab="rfd" aria-selected="false">RFD</button>
+    <button type="button" class="tab admin-only" role="tab" data-tab="rfd" aria-selected="false">RFD</button>
     <button type="button" class="tab" role="tab" data-tab="records" aria-selected="false">RFD Records</button>
     <button type="button" class="tab" role="tab" data-tab="summary" aria-selected="false">Summary of RFD</button>
   </nav>
@@ -174,7 +209,7 @@ tr.editing td { background: var(--tint-2) !important; box-shadow: inset 3px 0 0 
       <div class="table-wrap"><table>
         <thead><tr>
           <th>Date</th><th>Affiliate</th><th class="num">Amount (₱)</th><th>RFD details</th><th>FAD assigned</th>
-          <th>Transmittal no.</th><th>Transaction no.</th><th>Refund date</th><th class="num">Refund amount (₱)</th><th>Remarks</th><th class="actions-col"></th>
+          <th>Transmittal no.</th><th>Transaction no.</th><th>Refund date</th><th class="num">Refund amount (₱)</th><th>Remarks</th><th class="actions-col admin-only"></th>
         </tr></thead>
         <tbody id="rows-open"></tbody>
       </table></div>
@@ -192,7 +227,7 @@ tr.editing td { background: var(--tint-2) !important; box-shadow: inset 3px 0 0 
     <div class="data-tools">
       <button type="button" class="btn" id="export-csv">Export CSV</button>
       <button type="button" class="btn" id="backup">Download backup</button>
-      <button type="button" class="btn" id="restore">Restore backup</button>
+      <button type="button" class="btn admin-only" id="restore">Restore backup</button>
       <input type="file" id="restore-file" accept=".json,application/json" hidden>
     </div>
   </section>
@@ -230,6 +265,12 @@ tr.editing td { background: var(--tint-2) !important; box-shadow: inset 3px 0 0 
   let entries = [];
   let filters = { affiliate: '', fad: '' };
   let editId = null;
+
+  // auth (client-side only: keeps viewers out of editing, not a security boundary)
+  const ADMIN_PASSWORD = 'admin123';
+  const AUTH_KEY = 'pgb-rfd-role';
+  let role = null;
+  const isAdmin = () => role === 'admin';
 
   function load() {
     try { const raw = localStorage.getItem(KEY); entries = raw ? JSON.parse(raw) : []; if (!Array.isArray(entries)) entries = []; }
@@ -313,7 +354,7 @@ tr.editing td { background: var(--tint-2) !important; box-shadow: inset 3px 0 0 
 
   function renderRecords(closed) {
     const tbody = $(closed ? 'rows-closed' : 'rows-open');
-    const cols = closed ? 10 : 11;
+    const cols = closed || !isAdmin() ? 10 : 11;
     const one = (text) => { const tr = el('tr'); const td = el('td', 'empty', text); td.colSpan = cols; tr.appendChild(td); return tr; };
     const rows = sortRows(filtered().filter((r) => isClosed(r) === closed));
     if (!entries.length && !closed) { tbody.replaceChildren(one('No RFDs yet. Add the first one in the RFD tab.')); return; }
@@ -327,7 +368,7 @@ tr.editing td { background: var(--tint-2) !important; box-shadow: inset 3px 0 0 
         el('td', 'num', r.refund_amount == null || r.refund_amount === '' ? '' : fmtAmt(num(r.refund_amount))),
         el('td', 'details', r.remarks || ''),
       );
-      if (closed) return tr;
+      if (closed || !isAdmin()) return tr;
       const act = el('td', 'nowrap actions-col');
       const edit = el('button', 'btn small', 'Edit'); edit.type = 'button';
       edit.addEventListener('click', () => startEdit(r));
@@ -352,7 +393,7 @@ tr.editing td { background: var(--tint-2) !important; box-shadow: inset 3px 0 0 
   // tabs
   const TABS = ['dashboard', 'rfd', 'records', 'summary'];
   function openTab(name, push) {
-    if (!TABS.includes(name)) name = 'dashboard';
+    if (!TABS.includes(name) || (name === 'rfd' && !isAdmin())) name = 'dashboard';
     TABS.forEach((t) => { $(t).hidden = t !== name; });
     document.querySelectorAll('.tab').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === name)));
     if (push && location.hash !== '#' + name) history.replaceState(null, '', '#' + name);
@@ -392,6 +433,7 @@ tr.editing td { background: var(--tint-2) !important; box-shadow: inset 3px 0 0 
 
   form.addEventListener('submit', (ev) => {
     ev.preventDefault();
+    if (!isAdmin()) return;
     const refAmt = f('refund_amount').value.trim();
     const row = {
       affiliate: f('affiliate').value,
@@ -437,7 +479,7 @@ tr.editing td { background: var(--tint-2) !important; box-shadow: inset 3px 0 0 
   $('restore').addEventListener('click', () => $('restore-file').click());
   $('restore-file').addEventListener('change', async (e) => {
     const file = e.target.files[0]; e.target.value = '';
-    if (!file) return;
+    if (!file || !isAdmin()) return;
     try {
       const data = JSON.parse(await file.text());
       if (!Array.isArray(data)) throw new Error('bad');
@@ -447,9 +489,44 @@ tr.editing td { background: var(--tint-2) !important; box-shadow: inset 3px 0 0 
     } catch { alert('That file isn’t an RFD backup. Choose a file made with “Download backup”.'); }
   });
 
-  load();
-  openTab(location.hash.slice(1), false);
-  render();
+  // login
+  let pick = 'viewer';
+  function choose(r) {
+    pick = r;
+    document.querySelectorAll('.roles .tab').forEach((b) => { const on = String(b.dataset.role === r); b.setAttribute('aria-checked', on); b.setAttribute('aria-selected', on); });
+    $('pw-field').hidden = r !== 'admin';
+    $('login-bad').hidden = true;
+    $('login-btn').textContent = r === 'admin' ? 'Log in as admin' : 'Continue as viewer';
+    if (r === 'admin') $('pw').focus();
+  }
+  document.querySelectorAll('.roles .tab').forEach((b) => b.addEventListener('click', () => choose(b.dataset.role)));
+  function enter(r) {
+    role = r;
+    try { sessionStorage.setItem(AUTH_KEY, r); } catch {}
+    document.body.classList.toggle('viewer', !isAdmin());
+    $('who-role').textContent = isAdmin() ? 'Admin' : 'Viewer';
+    $('login').hidden = true; $('app').hidden = false;
+    cancelEdit(); hideMsgs();
+    load();
+    openTab(location.hash.slice(1), false);
+    render();
+  }
+  $('login-form').addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    if (pick === 'admin' && $('pw').value !== ADMIN_PASSWORD) { $('login-bad').hidden = false; $('pw').select(); return; }
+    $('pw').value = '';
+    enter(pick);
+  });
+  $('logout').addEventListener('click', () => {
+    role = null;
+    try { sessionStorage.removeItem(AUTH_KEY); } catch {}
+    $('app').hidden = true; $('login').hidden = false;
+    choose('viewer');
+  });
+
+  let saved = null;
+  try { saved = sessionStorage.getItem(AUTH_KEY); } catch {}
+  if (saved === 'admin' || saved === 'viewer') enter(saved);
 })();
 </script>
 </body>
