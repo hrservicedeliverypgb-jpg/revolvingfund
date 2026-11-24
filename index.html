@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RFD Monitoring</title>
+<style>
+:root {
+  --blue: #1d4ed8; --blue-deep: #1e3a8a; --blue-bright: #3b82f6;
+  --ink: #1e3a8a; --fg: #0f172a; --muted: #64748b;
+  --bg: #f5f8ff; --panel: #ffffff; --tint: #f1f5fe; --tint-2: #e3ebfd; --line: #d6e0f5;
+  --ok: #15803d; --bad: #b91c1c;
+  --radius: 8px; --shadow: 0 1px 2px rgba(15,35,95,.06), 0 6px 18px rgba(15,35,95,.07);
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif; }
+.wrap { max-width: 1280px; margin: 0 auto; padding: 24px 20px 48px; display: flex; flex-direction: column; gap: 20px; }
+header { background: linear-gradient(135deg, var(--blue-deep), var(--blue) 60%, var(--blue-bright)); color: #fff; border-radius: 16px; padding: 28px; box-shadow: var(--shadow); }
+h1 { font: 400 30px/1.2 Georgia, "Times New Roman", serif; margin: 0; }
+.lede { margin: 8px 0 0; color: rgba(255,255,255,.85); }
+.lede b { color: #fff; font-variant-numeric: tabular-nums; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 20px; box-shadow: var(--shadow); }
+h2 { font-size: 18px; font-weight: 600; margin: 0 0 14px; color: var(--ink); }
+.note { font-size: 13px; font-weight: 400; color: var(--muted); }
+.filters { display: flex; flex-wrap: wrap; gap: 14px; align-items: end; background: var(--tint); border: 1px solid var(--line); border-radius: 12px; padding: 14px 20px; }
+.field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; font-weight: 600; color: var(--muted); min-width: 0; }
+.field input, .field textarea, .field select { font: inherit; font-size: 15px; font-weight: 400; color: var(--fg); background: #fff; border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 10px; width: 100%; }
+.filters .field select { min-width: 180px; }
+.field input:focus, .field textarea:focus, .field select:focus { outline: none; border-color: var(--blue-bright); box-shadow: 0 0 0 3px rgba(59,130,246,.25); }
+.field textarea { min-height: 64px; resize: vertical; }
+.field input[type="date"] { cursor: pointer; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; }
+.wide { grid-column: 1 / -1; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 18px; }
+.btn { font: inherit; font-size: 14px; border: 1px solid var(--line); border-radius: 999px; padding: 7px 18px; background: #fff; color: var(--ink); cursor: pointer; }
+.btn:hover { background: var(--tint-2); border-color: var(--blue-bright); }
+.btn:focus-visible, .tab:focus-visible { outline: 2px solid var(--blue-bright); outline-offset: 2px; }
+.primary { background: var(--blue); color: #fff; border-color: var(--blue); font-weight: 600; }
+.primary:hover { background: var(--blue-deep); border-color: var(--blue-deep); }
+.small { font-size: 12px; padding: 2px 12px; }
+.danger { color: var(--bad); }
+.danger:hover { border-color: var(--bad); background: #fdf2f2; }
+.msg { font-size: 13px; margin: 0; }
+.ok { color: var(--ok); } .bad { color: var(--bad); }
+.tabs { display: flex; gap: 4px; background: var(--tint); border: 1px solid var(--line); border-radius: 999px; padding: 4px; overflow-x: auto; align-self: flex-start; max-width: 100%; }
+.tab { font: inherit; font-size: 15px; background: none; border: 0; border-radius: 999px; padding: 8px 20px; color: var(--ink); cursor: pointer; white-space: nowrap; }
+.tab:hover { background: var(--tint-2); }
+.tab[aria-selected="true"] { background: var(--blue); color: #fff; font-weight: 600; box-shadow: 0 2px 6px rgba(29,78,216,.3); }
+.panel { display: flex; flex-direction: column; gap: 20px; }
+.panel[hidden] { display: none; }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; }
+.kpis .card { border-top: 4px solid var(--blue); }
+.kpi-label { font-size: 13px; color: var(--muted); }
+.kpi-value { font: 400 28px/1.2 Georgia, "Times New Roman", serif; font-variant-numeric: tabular-nums; margin-top: 4px; color: var(--ink); }
+.chart { position: relative; min-height: 60px; }
+.bar-row { display: grid; grid-template-columns: 1fr auto; gap: 4px 8px; margin-bottom: 14px; cursor: pointer; font-size: 13px; }
+.bar-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.bar-val { font-variant-numeric: tabular-nums; color: var(--ink); }
+.bar-track { grid-column: 1 / -1; height: 12px; border-radius: 999px; background: var(--tint-2); overflow: hidden; }
+.bar { height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--blue), var(--blue-bright)); }
+.bar-row:hover .bar { filter: brightness(1.1); }
+.tip { position: absolute; pointer-events: none; background: #fff; border: 1px solid var(--line); box-shadow: var(--shadow); border-radius: var(--radius); padding: 4px 8px; font-size: 13px; white-space: nowrap; z-index: 2; }
+.table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { background: var(--blue); color: #fff; font-weight: 600; white-space: nowrap; border-bottom: 0; }
+tbody tr:nth-child(even) td { background: var(--tint); }
+tbody tr:hover td { background: var(--tint-2); }
+tbody tr:last-child td { border-bottom: 0; }
+.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.nowrap { white-space: nowrap; }
+.details { min-width: 180px; }
+td.empty { color: var(--muted); text-align: center; padding: 20px; background: none !important; }
+tr.editing td { background: var(--tint-2) !important; box-shadow: inset 3px 0 0 var(--blue); }
+.total-line { margin: 14px 0 0; padding: 8px 12px; background: var(--tint); border-radius: var(--radius); font-size: 13px; color: var(--muted); }
+.total-line b { color: var(--ink); font-variant-numeric: tabular-nums; }
+.data-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+@media print {
+  body { background: #fff; }
+  .tabs, #form-card, .filters button, .data-tools, .actions-col { display: none !important; }
+  .panel[hidden] { display: flex !important; }
+  .panel + .panel { break-before: page; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Revolving Fund (RFD) Monitoring</h1>
+    <p class="lede" id="lede"></p>
+  </header>
+
+  <section class="filters">
+    <label class="field">Affiliate
+      <select id="f-aff"></select>
+    </label>
+    <label class="field">FAD assigned
+      <select id="f-fad"></select>
+    </label>
+    <button type="button" class="btn" id="reset">Clear filters</button>
+  </section>
+
+  <nav class="tabs" role="tablist" aria-label="RFD views">
+    <button type="button" class="tab" role="tab" data-tab="dashboard" aria-selected="true">Dashboard</button>
+    <button type="button" class="tab" role="tab" data-tab="rfd" aria-selected="false">RFD</button>
+    <button type="button" class="tab" role="tab" data-tab="records" aria-selected="false">RFD Records</button>
+    <button type="button" class="tab" role="tab" data-tab="summary" aria-selected="false">Summary of RFD</button>
+  </nav>
+
+  <section id="dashboard" class="panel" role="tabpanel" aria-label="Dashboard">
+    <div class="kpis">
+      <div class="card"><div class="kpi-label">Total amount</div><div class="kpi-value" id="k-total">₱0.00</div></div>
+      <div class="card"><div class="kpi-label">RFDs</div><div class="kpi-value" id="k-count">0</div></div>
+      <div class="card"><div class="kpi-label">Affiliates</div><div class="kpi-value" id="k-aff">0</div></div>
+      <div class="card"><div class="kpi-label">Average per RFD</div><div class="kpi-value" id="k-avg">₱0.00</div></div>
+    </div>
+    <div class="card">
+      <h2>Amount by affiliate</h2>
+      <div class="chart" id="chart" role="img" aria-label="Bar chart of total RFD amount per affiliate"></div>
+    </div>
+  </section>
+
+  <section id="rfd" class="panel" role="tabpanel" aria-label="RFD" hidden>
+    <div class="card" id="form-card">
+      <h2>Add / update RFD</h2>
+      <form id="form" autocomplete="off">
+        <div class="grid">
+          <label class="field">Affiliate *
+            <select name="affiliate" required id="in-aff"></select>
+          </label>
+          <label class="field">Date *
+            <input name="date" type="date" required min="2000-01-01" max="2100-12-31">
+          </label>
+          <label class="field">Amount (₱) *
+            <input name="amount" type="number" required min="0" step="0.01" inputmode="decimal">
+          </label>
+          <label class="field">FAD assigned
+            <input name="fad" maxlength="120">
+          </label>
+          <label class="field">Transmittal number
+            <input name="transmittal" maxlength="80">
+          </label>
+          <label class="field">Transaction number
+            <input name="transaction" maxlength="80">
+          </label>
+          <label class="field">Refund date
+            <input name="refund_date" type="date" min="2000-01-01" max="2100-12-31">
+          </label>
+          <label class="field">Refund amount (₱)
+            <input name="refund_amount" type="number" min="0" step="0.01" inputmode="decimal">
+          </label>
+          <label class="field wide">RFD details
+            <textarea name="details" maxlength="2000"></textarea>
+          </label>
+          <label class="field wide">Remarks
+            <textarea name="remarks" maxlength="2000"></textarea>
+          </label>
+        </div>
+        <div class="actions">
+          <button type="submit" class="btn primary" id="btn-add">Add RFD</button>
+          <button type="submit" class="btn primary" id="btn-update" hidden>Update RFD</button>
+          <button type="button" class="btn" id="btn-cancel" hidden>Cancel edit</button>
+          <p class="msg ok" id="msg-ok" hidden>Saved.</p>
+          <p class="msg bad" id="msg-bad" hidden></p>
+        </div>
+      </form>
+    </div>
+  </section>
+
+  <section id="records" class="panel" role="tabpanel" aria-label="RFD records" hidden>
+    <div class="card">
+      <h2>Open RFDs</h2>
+      <div class="table-wrap"><table>
+        <thead><tr>
+          <th>Date</th><th>Affiliate</th><th class="num">Amount (₱)</th><th>RFD details</th><th>FAD assigned</th>
+          <th>Transmittal no.</th><th>Transaction no.</th><th>Refund date</th><th class="num">Refund amount (₱)</th><th>Remarks</th><th class="actions-col"></th>
+        </tr></thead>
+        <tbody id="rows-open"></tbody>
+      </table></div>
+    </div>
+    <div class="card">
+      <h2>Closed RFDs <em class="note">(refunded)</em></h2>
+      <div class="table-wrap"><table>
+        <thead><tr>
+          <th>Date</th><th>Affiliate</th><th class="num">Amount (₱)</th><th>RFD details</th><th>FAD assigned</th>
+          <th>Transmittal no.</th><th>Transaction no.</th><th>Refund date</th><th class="num">Refund amount (₱)</th><th>Remarks</th>
+        </tr></thead>
+        <tbody id="rows-closed"></tbody>
+      </table></div>
+    </div>
+    <div class="data-tools">
+      <button type="button" class="btn" id="export-csv">Export CSV</button>
+      <button type="button" class="btn" id="backup">Download backup</button>
+      <button type="button" class="btn" id="restore">Restore backup</button>
+      <input type="file" id="restore-file" accept=".json,application/json" hidden>
+    </div>
+  </section>
+
+  <section id="summary" class="panel" role="tabpanel" aria-label="Summary of RFD" hidden>
+    <div class="card">
+      <h2>Summary of RFD by affiliate</h2>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Affiliate</th><th class="num">No. of RFDs</th><th class="num">Total amount (₱)</th><th class="num">Total refund (₱)</th></tr></thead>
+        <tbody id="sum-rows"></tbody>
+      </table></div>
+      <p class="total-line" id="sum-total"></p>
+    </div>
+  </section>
+</div>
+
+<script>
+(() => {
+  const AFFILIATES = ['PSC', 'PHI', 'PPC', 'CSI', 'SKILLS', 'PSI', 'PSEFI', 'SKILLS COOP', 'AMICI', 'PTMSI', 'ABC', 'CSPIC', 'THAM', 'SLM', 'MLG'];
+  const KEY = 'pgb-rfd-entries-v1';
+  const $ = (id) => document.getElementById(id);
+  const amtFmt = new Intl.NumberFormat('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const intFmt = new Intl.NumberFormat('en-PH');
+  const fmtAmt = (n) => amtFmt.format(n || 0);
+  const num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
+  const r2 = (n) => Math.round(n * 100) / 100;
+  const fmtDay = (s) => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s || '');
+    if (!m) return s || '';
+    return new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric', timeZone: 'UTC' });
+  };
+  const isClosed = (r) => !!r.refund_date || (r.refund_amount != null && r.refund_amount !== '');
+  const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+
+  let entries = [];
+  let filters = { affiliate: '', fad: '' };
+  let editId = null;
+
+  function load() {
+    try { const raw = localStorage.getItem(KEY); entries = raw ? JSON.parse(raw) : []; if (!Array.isArray(entries)) entries = []; }
+    catch { entries = []; }
+  }
+  function persist() {
+    try { localStorage.setItem(KEY, JSON.stringify(entries)); return true; }
+    catch { return false; }
+  }
+
+  const filtered = () => entries.filter((r) => (!filters.affiliate || r.affiliate === filters.affiliate) && (!filters.fad || r.fad === filters.fad));
+  const sortRows = (rows) => rows.slice().sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.updated_at || '').localeCompare(a.updated_at || ''));
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+
+  function renderFilters() {
+    const fill = (sel, label, values, cur) => {
+      sel.replaceChildren(new Option(label, ''), ...values.map((v) => new Option(v, v)));
+      sel.value = values.includes(cur) ? cur : '';
+    };
+    const uniq = (f) => Array.from(new Set(entries.map((r) => r[f]).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+    fill($('f-aff'), 'All affiliates', uniq('affiliate'), filters.affiliate);
+    fill($('f-fad'), 'All FAD', uniq('fad'), filters.fad);
+  }
+
+  function renderSummary() {
+    const rows = filtered();
+    const total = rows.reduce((s, r) => s + num(r.amount), 0);
+    const refund = rows.reduce((s, r) => s + num(r.refund_amount), 0);
+    const byAff = new Map();
+    rows.forEach((r) => { const a = r.affiliate || '(none)'; const o = byAff.get(a) || { amount: 0, count: 0, refund: 0 }; o.amount += num(r.amount); o.count += 1; o.refund += num(r.refund_amount); byAff.set(a, o); });
+    const ranked = Array.from(byAff, ([affiliate, o]) => ({ affiliate, ...o })).sort((a, b) => b.amount - a.amount);
+
+    $('k-total').textContent = '₱' + fmtAmt(r2(total));
+    $('k-count').textContent = intFmt.format(rows.length);
+    $('k-aff').textContent = intFmt.format(byAff.size);
+    $('k-avg').textContent = '₱' + fmtAmt(rows.length ? r2(total / rows.length) : 0);
+
+    const lede = $('lede');
+    if (!rows.length) {
+      lede.textContent = entries.length ? 'No RFDs match the filters.' : 'No RFDs recorded yet. Add the first one in the RFD tab.';
+    } else {
+      lede.replaceChildren('₱', el('b', '', fmtAmt(r2(total))), ' across ', el('b', '', intFmt.format(rows.length)), ' RFDs from ',
+        el('b', '', intFmt.format(byAff.size)), ' affiliates. Largest: ', el('b', '', ranked[0].affiliate), ' at ₱', el('b', '', fmtAmt(r2(ranked[0].amount))), '.');
+    }
+
+    // chart
+    const chart = $('chart');
+    if (!ranked.length) { chart.replaceChildren(el('p', 'msg', 'No RFDs to chart yet.')); }
+    else {
+      const max = ranked[0].amount || 1;
+      const tip = el('div', 'tip'); tip.hidden = true;
+      chart.replaceChildren(...ranked.map((r) => {
+        const row = el('div', 'bar-row');
+        const track = el('div', 'bar-track'); const bar = el('div', 'bar');
+        bar.style.width = Math.max(1, (r.amount / max) * 100) + '%';
+        track.appendChild(bar);
+        row.append(el('span', 'bar-label', r.affiliate), el('span', 'bar-val', fmtAmt(r2(r.amount))), track);
+        row.addEventListener('mousemove', (ev) => {
+          const box = chart.getBoundingClientRect();
+          tip.textContent = `${r.affiliate}: ₱${fmtAmt(r2(r.amount))} (${intFmt.format(r.count)} ${r.count === 1 ? 'RFD' : 'RFDs'})`;
+          tip.hidden = false;
+          tip.style.left = Math.min(ev.clientX - box.left + 12, Math.max(0, chart.clientWidth - tip.offsetWidth)) + 'px';
+          tip.style.top = (ev.clientY - box.top + 12) + 'px';
+        });
+        row.addEventListener('mouseleave', () => { tip.hidden = true; });
+        row.addEventListener('click', () => { filters.affiliate = filters.affiliate === r.affiliate || r.affiliate === '(none)' ? '' : r.affiliate; render(); });
+        return row;
+      }), tip);
+    }
+
+    // summary table
+    const names = AFFILIATES.filter((a) => !filters.affiliate || a === filters.affiliate).concat(Array.from(byAff.keys()).filter((a) => !AFFILIATES.includes(a)));
+    $('sum-rows').replaceChildren(...names.map((a) => {
+      const o = byAff.get(a) || { amount: 0, count: 0, refund: 0 };
+      const tr = el('tr');
+      tr.append(el('td', '', a), el('td', 'num', intFmt.format(o.count)), el('td', 'num', fmtAmt(r2(o.amount))), el('td', 'num', fmtAmt(r2(o.refund))));
+      return tr;
+    }));
+    $('sum-total').replaceChildren('Total: ', el('b', '', intFmt.format(rows.length)), ' RFDs, ₱', el('b', '', fmtAmt(r2(total))), ' amount, ₱', el('b', '', fmtAmt(r2(refund))), ' refunded');
+  }
+
+  function renderRecords(closed) {
+    const tbody = $(closed ? 'rows-closed' : 'rows-open');
+    const cols = closed ? 10 : 11;
+    const one = (text) => { const tr = el('tr'); const td = el('td', 'empty', text); td.colSpan = cols; tr.appendChild(td); return tr; };
+    const rows = sortRows(filtered().filter((r) => isClosed(r) === closed));
+    if (!entries.length && !closed) { tbody.replaceChildren(one('No RFDs yet. Add the first one in the RFD tab.')); return; }
+    if (!rows.length) { tbody.replaceChildren(one(closed ? 'No refunded RFDs.' : 'No open RFDs.')); return; }
+    tbody.replaceChildren(...rows.map((r) => {
+      const tr = el('tr', r.id === editId ? 'editing' : '');
+      tr.append(
+        el('td', 'nowrap', fmtDay(r.date)), el('td', '', r.affiliate || ''), el('td', 'num', fmtAmt(num(r.amount))),
+        el('td', 'details', r.details || ''), el('td', '', r.fad || ''), el('td', 'nowrap', r.transmittal || ''),
+        el('td', 'nowrap', r.transaction || ''), el('td', 'nowrap', fmtDay(r.refund_date)),
+        el('td', 'num', r.refund_amount == null || r.refund_amount === '' ? '' : fmtAmt(num(r.refund_amount))),
+        el('td', 'details', r.remarks || ''),
+      );
+      if (closed) return tr;
+      const act = el('td', 'nowrap actions-col');
+      const edit = el('button', 'btn small', 'Edit'); edit.type = 'button';
+      edit.addEventListener('click', () => startEdit(r));
+      const del = el('button', 'btn small danger', 'Delete'); del.type = 'button';
+      let armed = false, t = null;
+      del.addEventListener('click', () => {
+        if (!armed) { armed = true; del.textContent = 'Confirm delete'; t = setTimeout(() => { armed = false; del.textContent = 'Delete'; }, 4000); return; }
+        clearTimeout(t);
+        entries = entries.filter((x) => x.id !== r.id);
+        if (!persist()) showMsg(false, 'That wasn’t deleted. This browser is blocking storage.');
+        if (editId === r.id) cancelEdit();
+        render();
+      });
+      act.append(edit, ' ', del);
+      tr.appendChild(act);
+      return tr;
+    }));
+  }
+
+  function render() { renderFilters(); renderSummary(); renderRecords(false); renderRecords(true); }
+
+  // tabs
+  const TABS = ['dashboard', 'rfd', 'records', 'summary'];
+  function openTab(name, push) {
+    if (!TABS.includes(name)) name = 'dashboard';
+    TABS.forEach((t) => { $(t).hidden = t !== name; });
+    document.querySelectorAll('.tab').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === name)));
+    if (push && location.hash !== '#' + name) history.replaceState(null, '', '#' + name);
+  }
+  document.querySelectorAll('.tab').forEach((b) => b.addEventListener('click', () => openTab(b.dataset.tab, true)));
+  window.addEventListener('hashchange', () => openTab(location.hash.slice(1), false));
+
+  // filters
+  $('f-aff').addEventListener('change', (e) => { filters.affiliate = e.target.value; render(); });
+  $('f-fad').addEventListener('change', (e) => { filters.fad = e.target.value; render(); });
+  $('reset').addEventListener('click', () => { filters = { affiliate: '', fad: '' }; render(); });
+
+  // form
+  const form = $('form');
+  const f = (n) => form.elements.namedItem(n);
+  $('in-aff').replaceChildren(new Option('Select affiliate', ''), ...AFFILIATES.map((a) => new Option(a, a)));
+  form.querySelectorAll('input[type="date"]').forEach((inp) => inp.addEventListener('click', () => { try { inp.showPicker(); } catch {} }));
+
+  function showMsg(ok, text) {
+    $('msg-ok').hidden = !ok;
+    $('msg-bad').hidden = ok;
+    if (!ok) $('msg-bad').textContent = text;
+  }
+  function hideMsgs() { $('msg-ok').hidden = true; $('msg-bad').hidden = true; }
+  function setMode(editing) { $('btn-add').hidden = editing; $('btn-update').hidden = !editing; $('btn-cancel').hidden = !editing; }
+  function startEdit(r) {
+    editId = r.id;
+    ['affiliate', 'date', 'fad', 'transmittal', 'transaction', 'details', 'remarks', 'refund_date'].forEach((k) => { f(k).value = r[k] || ''; });
+    f('amount').value = r.amount == null ? '' : String(r.amount);
+    f('refund_amount').value = r.refund_amount == null ? '' : String(r.refund_amount);
+    setMode(true); hideMsgs();
+    openTab('rfd', true);
+    render();
+    form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  function cancelEdit() { editId = null; form.reset(); setMode(false); }
+
+  form.addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    const refAmt = f('refund_amount').value.trim();
+    const row = {
+      affiliate: f('affiliate').value,
+      date: f('date').value,
+      amount: r2(num(f('amount').value)),
+      details: f('details').value.trim(),
+      fad: f('fad').value.trim(),
+      transmittal: f('transmittal').value.trim(),
+      transaction: f('transaction').value.trim(),
+      refund_date: f('refund_date').value || '',
+      refund_amount: refAmt === '' ? null : r2(num(refAmt)),
+      remarks: f('remarks').value.trim(),
+      updated_at: new Date().toISOString(),
+    };
+    const before = entries;
+    if (editId) entries = entries.map((x) => (x.id === editId ? { id: editId, ...row } : x));
+    else entries = entries.concat({ id: uid(), ...row });
+    if (!persist()) { entries = before; showMsg(false, 'That wasn’t saved. This browser is blocking storage.'); return; }
+    showMsg(true);
+    cancelEdit();
+    render();
+  });
+  $('btn-cancel').addEventListener('click', () => { cancelEdit(); hideMsgs(); render(); });
+
+  // data tools
+  function download(name, text, type) {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([text], { type }));
+    a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+  const today = () => new Date().toISOString().slice(0, 10);
+  $('export-csv').addEventListener('click', () => {
+    const cols = [['Status', (r) => (isClosed(r) ? 'Closed' : 'Open')], ['Date', (r) => r.date], ['Affiliate', (r) => r.affiliate], ['Amount', (r) => r.amount],
+      ['RFD details', (r) => r.details], ['FAD assigned', (r) => r.fad], ['Transmittal no.', (r) => r.transmittal], ['Transaction no.', (r) => r.transaction],
+      ['Refund date', (r) => r.refund_date], ['Refund amount', (r) => r.refund_amount], ['Remarks', (r) => r.remarks]];
+    const q = (v) => { const s = v == null ? '' : String(v); return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+    const lines = [cols.map((c) => q(c[0])).join(',')].concat(sortRows(entries).map((r) => cols.map((c) => q(c[1](r))).join(',')));
+    download(`rfd-records-${today()}.csv`, '\ufeff' + lines.join('\r\n'), 'text/csv;charset=utf-8');
+  });
+  $('backup').addEventListener('click', () => download(`rfd-backup-${today()}.json`, JSON.stringify(entries, null, 2), 'application/json'));
+  $('restore').addEventListener('click', () => $('restore-file').click());
+  $('restore-file').addEventListener('change', async (e) => {
+    const file = e.target.files[0]; e.target.value = '';
+    if (!file) return;
+    try {
+      const data = JSON.parse(await file.text());
+      if (!Array.isArray(data)) throw new Error('bad');
+      if (!confirm(`Replace the current ${entries.length} record(s) with ${data.length} record(s) from the backup?`)) return;
+      entries = data.map((r) => ({ id: r.id || uid(), ...r }));
+      persist(); render();
+    } catch { alert('That file isn’t an RFD backup. Choose a file made with “Download backup”.'); }
+  });
+
+  load();
+  openTab(location.hash.slice(1), false);
+  render();
+})();
+</script>
+</body>
+</html>
