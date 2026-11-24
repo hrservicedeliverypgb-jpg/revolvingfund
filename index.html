@@ -227,6 +227,7 @@ body.viewer .admin-only { display: none !important; }
         </tr></thead>
         <tbody id="rows-open"></tbody>
       </table></div>
+      <p class="total-line" id="total-open"></p>
     </div>
     <div class="card">
       <h2>Closed RFDs <em class="note">(refunded)</em></h2>
@@ -238,6 +239,7 @@ body.viewer .admin-only { display: none !important; }
         </tr></thead>
         <tbody id="rows-closed"></tbody>
       </table></div>
+      <p class="total-line" id="total-closed"></p>
     </div>
     <div class="data-tools">
       <button type="button" class="btn" id="export-csv">Export CSV</button>
@@ -372,6 +374,10 @@ body.viewer .admin-only { display: none !important; }
     const cols = closed || !isAdmin() ? 10 : 11;
     const one = (text) => { const tr = el('tr'); const td = el('td', 'empty', text); td.colSpan = cols; tr.appendChild(td); return tr; };
     const rows = sortRows(filtered().filter((r) => isClosed(r) === closed));
+    const amt = rows.reduce((s, r) => s + num(r.amount), 0);
+    const totalLine = [closed ? 'Total closed: ' : 'Total open: ', el('b', '', intFmt.format(rows.length)), rows.length === 1 ? ' RFD, ₱' : ' RFDs, ₱', el('b', '', fmtAmt(r2(amt))), ' amount'];
+    if (closed) totalLine.push(', ₱', el('b', '', fmtAmt(r2(rows.reduce((s, r) => s + num(r.refund_amount), 0)))), ' refunded');
+    $(closed ? 'total-closed' : 'total-open').replaceChildren(...totalLine);
     if (!entries.length && !closed) { tbody.replaceChildren(one('No RFDs yet. Add the first one in the RFD tab.')); return; }
     if (!rows.length) { tbody.replaceChildren(one(closed ? 'No refunded RFDs.' : 'No open RFDs.')); return; }
     tbody.replaceChildren(...rows.map((r) => {
